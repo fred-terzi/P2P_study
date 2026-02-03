@@ -2,16 +2,16 @@ import { defineConfig } from 'vite';
 
 export default defineConfig({
   root: '.',
+  base: './', // Relative paths for GitHub Pages
   server: {
     port: 3000,
-    open: '/host.html'
+    open: '/'
   },
   build: {
     outDir: 'dist',
     rollupOptions: {
       input: {
-        host: 'host.html',
-        client: 'client.html'
+        main: 'index.html'
       }
     }
   }

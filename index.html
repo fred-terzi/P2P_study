@@ -2,211 +2,965 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>P2P LLM Streaming POC</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>P2P Stream</title>
   <style>
     * {
       box-sizing: border-box;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      -webkit-tap-highlight-color: transparent;
     }
-    body {
+    html, body {
       margin: 0;
-      padding: 20px;
+      padding: 0;
       background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
       min-height: 100vh;
+      min-height: -webkit-fill-available;
       color: #fff;
     }
     .container {
-      max-width: 800px;
+      max-width: 500px;
       margin: 0 auto;
-      text-align: center;
+      padding: 20px;
+      padding-top: env(safe-area-inset-top, 20px);
+      padding-bottom: env(safe-area-inset-bottom, 20px);
     }
     h1 { 
-      font-size: 2.5rem; 
-      margin-bottom: 10px;
+      text-align: center; 
+      margin-bottom: 5px;
+      font-size: 1.8rem;
     }
     .subtitle { 
+      text-align: center; 
       color: #888; 
-      margin-bottom: 40px;
-      font-size: 1.1rem;
+      margin-bottom: 25px;
+      font-size: 0.9rem;
     }
     
-    .options {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-      gap: 20px;
-      margin-bottom: 40px;
-    }
-    
-    .option {
+    /* Cards */
+    .card {
       background: rgba(255, 255, 255, 0.1);
       border-radius: 16px;
-      padding: 30px;
-      text-decoration: none;
-      color: #fff;
-      transition: transform 0.2s, box-shadow 0.2s;
-      backdrop-filter: blur(10px);
-      border: 1px solid rgba(255, 255, 255, 0.1);
-    }
-    .option:hover {
-      transform: translateY(-5px);
-      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
-      background: rgba(255, 255, 255, 0.15);
-    }
-    .option-icon {
-      font-size: 4rem;
+      padding: 20px;
       margin-bottom: 15px;
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
     }
-    .option-title {
-      font-size: 1.5rem;
-      font-weight: bold;
-      margin-bottom: 10px;
-    }
-    .option-desc {
-      color: #aaa;
-      font-size: 0.9rem;
-      line-height: 1.5;
-    }
-    
-    .section {
-      background: rgba(255, 255, 255, 0.05);
-      border-radius: 12px;
-      padding: 25px;
-      margin-bottom: 20px;
-      text-align: left;
-    }
-    .section h2 {
+    .card h3 {
       margin-top: 0;
       margin-bottom: 15px;
-      font-size: 1.3rem;
-      color: #4CAF50;
-    }
-    .section p {
-      color: #aaa;
-      line-height: 1.6;
-      margin: 10px 0;
-    }
-    .section code {
-      background: rgba(0, 0, 0, 0.3);
-      padding: 2px 8px;
-      border-radius: 4px;
-      font-family: 'SF Mono', 'Fira Code', monospace;
     }
     
-    .badge {
-      display: inline-block;
-      background: #4CAF50;
-      color: white;
-      padding: 4px 12px;
-      border-radius: 20px;
-      font-size: 0.75rem;
-      font-weight: bold;
-      margin-left: 10px;
-      vertical-align: middle;
-    }
-    .badge.beta { background: #FF9800; }
-    .badge.legacy { background: #666; }
-    
-    .flow-steps {
+    /* Status bar */
+    .status {
       display: flex;
-      flex-direction: column;
+      align-items: center;
       gap: 10px;
-      margin-top: 15px;
+      margin-bottom: 15px;
+      padding: 10px 15px;
+      background: rgba(0,0,0,0.2);
+      border-radius: 8px;
     }
-    .flow-step {
-      display: flex;
-      align-items: center;
-      gap: 15px;
-    }
-    .flow-step-num {
-      width: 30px;
-      height: 30px;
-      background: #4CAF50;
+    .status-dot {
+      width: 12px;
+      height: 12px;
       border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-weight: bold;
+      background: #666;
       flex-shrink: 0;
     }
-    .flow-step-text {
-      color: #ccc;
+    .status-dot.connected { background: #4CAF50; }
+    .status-dot.connecting { background: #FFC107; animation: pulse 1s infinite; }
+    .status-dot.error { background: #f44336; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+    
+    /* Buttons */
+    button {
+      background: #4CAF50;
+      color: white;
+      border: none;
+      padding: 14px 24px;
+      border-radius: 12px;
+      cursor: pointer;
+      font-size: 16px;
+      font-weight: 600;
+      width: 100%;
+      margin: 5px 0;
+      transition: transform 0.1s, opacity 0.2s;
+      -webkit-appearance: none;
     }
+    button:active { transform: scale(0.98); }
+    button:disabled { background: #555; cursor: not-allowed; opacity: 0.7; }
+    button.secondary { background: #2196F3; }
+    button.danger { background: #f44336; }
+    button.outline {
+      background: transparent;
+      border: 2px solid rgba(255,255,255,0.3);
+    }
+    
+    /* Role selection */
+    .role-buttons {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 15px;
+    }
+    .role-btn {
+      background: rgba(255,255,255,0.1);
+      border: 2px solid rgba(255,255,255,0.2);
+      padding: 25px 15px;
+      border-radius: 16px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .role-btn:hover, .role-btn:active {
+      background: rgba(76, 175, 80, 0.2);
+      border-color: #4CAF50;
+    }
+    .role-btn .icon { font-size: 3rem; margin-bottom: 10px; }
+    .role-btn .label { font-size: 1.1rem; font-weight: 600; }
+    .role-btn .desc { font-size: 0.8rem; color: #888; margin-top: 5px; }
+    
+    /* QR Code */
+    .qr-wrapper {
+      text-align: center;
+      margin: 15px 0;
+    }
+    .qr-container {
+      display: inline-block;
+      padding: 15px;
+      background: #fff;
+      border-radius: 12px;
+    }
+    #qr-canvas, #client-qr-canvas { 
+      width: 220px; 
+      height: 220px;
+      display: block;
+    }
+    
+    /* Scanner */
+    .scanner-wrapper {
+      position: relative;
+      width: 100%;
+      max-width: 350px;
+      margin: 15px auto;
+      border-radius: 12px;
+      overflow: hidden;
+      background: #000;
+    }
+    .scanner-video {
+      width: 100%;
+      display: block;
+      border-radius: 12px;
+    }
+    .scanner-overlay {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 200px;
+      height: 200px;
+      border: 3px solid #4CAF50;
+      border-radius: 12px;
+      pointer-events: none;
+    }
+    .scanner-hint {
+      text-align: center;
+      color: #888;
+      font-size: 0.9rem;
+      margin-top: 10px;
+    }
+    
+    /* Manual code input */
+    .manual-section {
+      margin-top: 15px;
+      padding-top: 15px;
+      border-top: 1px solid rgba(255,255,255,0.1);
+    }
+    .manual-section summary {
+      color: #888;
+      font-size: 0.85rem;
+      cursor: pointer;
+      margin-bottom: 10px;
+    }
+    .code-input {
+      width: 100%;
+      padding: 12px;
+      border: 1px solid rgba(255,255,255,0.2);
+      border-radius: 8px;
+      background: rgba(0,0,0,0.3);
+      color: #fff;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 11px;
+      margin-bottom: 10px;
+    }
+    .code-input:focus {
+      outline: none;
+      border-color: #4CAF50;
+    }
+    
+    /* Stream output */
+    .output-area {
+      background: rgba(0, 0, 0, 0.3);
+      border-radius: 12px;
+      padding: 15px;
+      min-height: 120px;
+      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+      font-size: 16px;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .output-area.streaming::after {
+      content: '▋';
+      animation: blink 1s infinite;
+    }
+    @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+    
+    /* Text input */
+    .text-input {
+      width: 100%;
+      min-height: 100px;
+      padding: 12px;
+      border: 1px solid rgba(255,255,255,0.2);
+      border-radius: 12px;
+      background: rgba(0,0,0,0.3);
+      color: #fff;
+      font-size: 16px;
+      resize: vertical;
+      margin-bottom: 10px;
+    }
+    .text-input:focus {
+      outline: none;
+      border-color: #4CAF50;
+    }
+    
+    /* Stats */
+    .stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin: 15px 0;
+    }
+    .stat {
+      background: rgba(0,0,0,0.2);
+      padding: 12px;
+      border-radius: 8px;
+      text-align: center;
+    }
+    .stat-value { 
+      font-size: 1.5rem; 
+      font-weight: bold; 
+      color: #4CAF50; 
+    }
+    .stat-label { 
+      font-size: 0.75rem; 
+      color: #888; 
+      margin-top: 2px;
+    }
+    
+    /* Steps indicator */
+    .steps {
+      display: flex;
+      justify-content: center;
+      gap: 8px;
+      margin-bottom: 20px;
+    }
+    .step-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.2);
+    }
+    .step-dot.active { background: #4CAF50; }
+    .step-dot.done { background: #4CAF50; opacity: 0.5; }
+    
+    /* View management */
+    .view { display: none; }
+    .view.active { display: block; }
+    
+    /* Utilities */
+    .hidden { display: none !important; }
+    .text-center { text-align: center; }
+    .mt-10 { margin-top: 10px; }
+    .mb-15 { margin-bottom: 15px; }
   </style>
 </head>
 <body>
   <div class="container">
-    <h1>🔗 P2P LLM Streaming</h1>
-    <p class="subtitle">Proof of Concept - Direct Browser-to-Browser Communication</p>
+    <h1>🔗 P2P Stream</h1>
+    <p class="subtitle">Direct Browser-to-Browser Connection</p>
 
-    <div class="options">
-      <a href="host-direct.html" class="option">
-        <div class="option-icon">📡</div>
-        <div class="option-title">Host <span class="badge">Direct</span></div>
-        <div class="option-desc">
-          Create a streaming session. Generate a QR code for clients to scan, 
-          then scan their response to establish connection.
-        </div>
-      </a>
-      
-      <a href="client-direct.html" class="option">
-        <div class="option-icon">📱</div>
-        <div class="option-title">Client <span class="badge">Direct</span></div>
-        <div class="option-desc">
-          Join a streaming session. Scan the host's QR code, then show 
-          your response QR for the host to scan.
-        </div>
-      </a>
+    <!-- Status Bar (always visible when not on home) -->
+    <div class="status hidden" id="status-bar">
+      <div class="status-dot" id="status-dot"></div>
+      <span id="status-text">Not Connected</span>
     </div>
 
-    <div class="section">
-      <h2>🔄 How It Works</h2>
-      <p>
-        This POC demonstrates <strong>direct WebRTC connections</strong> between browsers 
-        without requiring any relay servers. The signaling exchange happens via QR codes.
-      </p>
-      <div class="flow-steps">
-        <div class="flow-step">
-          <div class="flow-step-num">1</div>
-          <div class="flow-step-text">Host creates session and displays offer QR code</div>
+    <!-- VIEW: Role Selection -->
+    <div class="view active" id="view-home">
+      <div class="card">
+        <h3 class="text-center">Choose Your Role</h3>
+        <div class="role-buttons">
+          <div class="role-btn" onclick="selectRole('host')">
+            <div class="icon">📡</div>
+            <div class="label">Host</div>
+            <div class="desc">Stream content to others</div>
+          </div>
+          <div class="role-btn" onclick="selectRole('client')">
+            <div class="icon">📱</div>
+            <div class="label">Client</div>
+            <div class="desc">Receive streamed content</div>
+          </div>
         </div>
-        <div class="flow-step">
-          <div class="flow-step-num">2</div>
-          <div class="flow-step-text">Client scans host's QR and displays answer QR</div>
-        </div>
-        <div class="flow-step">
-          <div class="flow-step-num">3</div>
-          <div class="flow-step-text">Host scans client's answer QR → Connection established!</div>
-        </div>
-        <div class="flow-step">
-          <div class="flow-step-num">4</div>
-          <div class="flow-step-text">Direct P2P streaming between devices</div>
-        </div>
+      </div>
+      
+      <div class="card">
+        <h3>How It Works</h3>
+        <p style="color: #aaa; font-size: 0.9rem; line-height: 1.6; margin: 0;">
+          Connect directly between devices using QR codes. No servers, no accounts, just scan and stream.
+        </p>
       </div>
     </div>
 
-    <div class="section">
-      <h2>✨ Key Features</h2>
-      <p>• <strong>No servers required</strong> - Pure peer-to-peer communication</p>
-      <p>• <strong>Compressed signaling</strong> - SDP compressed to ~150 chars for QR</p>
-      <p>• <strong>STUN for NAT traversal</strong> - Works across most networks</p>
-      <p>• <strong>Bidirectional data channels</strong> - Full duplex communication</p>
-      <p>• <strong>Token streaming</strong> - Simulates LLM output streaming</p>
+    <!-- VIEW: Host - Step 1: Create Session -->
+    <div class="view" id="view-host-create">
+      <div class="steps">
+        <div class="step-dot active"></div>
+        <div class="step-dot"></div>
+        <div class="step-dot"></div>
+      </div>
+      
+      <div class="card">
+        <h3>Step 1: Create Session</h3>
+        <p style="color: #aaa; margin-bottom: 15px;">
+          Generate a QR code for the client to scan.
+        </p>
+        <button onclick="hostCreateSession()" id="btn-create">
+          📡 Create Session
+        </button>
+      </div>
+      
+      <button class="outline" onclick="goHome()">← Back</button>
     </div>
 
-    <div class="section">
-      <h2>🛠️ Legacy Versions</h2>
-      <p>
-        Previous implementations using relay servers (may have connectivity issues):
-      </p>
-      <p>
-        <a href="host.html" style="color: #4CAF50;">Host (Relay)</a>
-        <span class="badge legacy">Legacy</span>
-        &nbsp;&nbsp;|&nbsp;&nbsp;
-        <a href="client.html" style="color: #4CAF50;">Client (Relay)</a>
-        <span class="badge legacy">Legacy</span>
-      </p>
+    <!-- VIEW: Host - Step 2: Show QR -->
+    <div class="view" id="view-host-show-qr">
+      <div class="steps">
+        <div class="step-dot done"></div>
+        <div class="step-dot active"></div>
+        <div class="step-dot"></div>
+      </div>
+      
+      <div class="card">
+        <h3>Step 2: Client Scans This</h3>
+        <p style="color: #aaa; margin-bottom: 10px;">
+          Have the client scan this QR code with their device.
+        </p>
+        
+        <div class="qr-wrapper">
+          <div class="qr-container">
+            <canvas id="qr-canvas"></canvas>
+          </div>
+        </div>
+        
+        <details class="manual-section">
+          <summary>Or copy code manually</summary>
+          <input type="text" class="code-input" id="offer-code" readonly onclick="this.select(); document.execCommand('copy');">
+        </details>
+        
+        <button onclick="hostProceedToScan()" class="mt-10">
+          Client Has Scanned → Next
+        </button>
+      </div>
+    </div>
+
+    <!-- VIEW: Host - Step 3: Scan Client QR -->
+    <div class="view" id="view-host-scan">
+      <div class="steps">
+        <div class="step-dot done"></div>
+        <div class="step-dot done"></div>
+        <div class="step-dot active"></div>
+      </div>
+      
+      <div class="card">
+        <h3>Step 3: Scan Client's QR</h3>
+        <p style="color: #aaa; margin-bottom: 10px;">
+          Point your camera at the client's QR code.
+        </p>
+        
+        <div class="scanner-wrapper">
+          <video id="host-scanner-video" class="scanner-video" autoplay playsinline muted></video>
+          <div class="scanner-overlay"></div>
+        </div>
+        <p class="scanner-hint">Position QR code within the frame</p>
+        
+        <details class="manual-section">
+          <summary>Or paste code manually</summary>
+          <input type="text" class="code-input" id="answer-input" placeholder="Paste client's code here...">
+          <button onclick="hostSubmitAnswer()" class="secondary">Submit</button>
+        </details>
+      </div>
+    </div>
+
+    <!-- VIEW: Host - Connected -->
+    <div class="view" id="view-host-connected">
+      <div class="card">
+        <h3>🎉 Connected!</h3>
+        
+        <div class="stats">
+          <div class="stat">
+            <div class="stat-value" id="host-chars-sent">0</div>
+            <div class="stat-label">Characters Sent</div>
+          </div>
+          <div class="stat">
+            <div class="stat-value" id="host-msgs-sent">0</div>
+            <div class="stat-label">Messages Sent</div>
+          </div>
+        </div>
+        
+        <textarea class="text-input" id="stream-input" placeholder="Type or paste text to stream..."></textarea>
+        
+        <button onclick="startStreaming()" id="btn-stream">
+          ▶️ Stream Character by Character
+        </button>
+        <button onclick="sendAll()" class="secondary">
+          📤 Send All at Once
+        </button>
+        
+        <div class="mt-10">
+          <p style="color: #888; font-size: 0.85rem; margin-bottom: 5px;">Sent:</p>
+          <div class="output-area" id="host-output"></div>
+        </div>
+      </div>
+      
+      <button class="danger" onclick="disconnect()">
+        🔌 Disconnect
+      </button>
+    </div>
+
+    <!-- VIEW: Client - Step 1: Scan Host QR -->
+    <div class="view" id="view-client-scan">
+      <div class="steps">
+        <div class="step-dot active"></div>
+        <div class="step-dot"></div>
+        <div class="step-dot"></div>
+      </div>
+      
+      <div class="card">
+        <h3>Step 1: Scan Host's QR</h3>
+        <p style="color: #aaa; margin-bottom: 10px;">
+          Point your camera at the host's QR code.
+        </p>
+        
+        <button onclick="clientStartScanner()" id="btn-start-scan" class="mb-15">
+          📷 Start Camera
+        </button>
+        
+        <div class="scanner-wrapper hidden" id="client-scanner-wrapper">
+          <video id="client-scanner-video" class="scanner-video" autoplay playsinline muted></video>
+          <div class="scanner-overlay"></div>
+        </div>
+        <p class="scanner-hint hidden" id="client-scanner-hint">Position QR code within the frame</p>
+        
+        <details class="manual-section">
+          <summary>Or paste code manually</summary>
+          <input type="text" class="code-input" id="offer-input" placeholder="Paste host's code here...">
+          <button onclick="clientSubmitOffer()" class="secondary">Submit</button>
+        </details>
+      </div>
+      
+      <button class="outline" onclick="goHome()">← Back</button>
+    </div>
+
+    <!-- VIEW: Client - Step 2: Show Answer QR -->
+    <div class="view" id="view-client-show-qr">
+      <div class="steps">
+        <div class="step-dot done"></div>
+        <div class="step-dot active"></div>
+        <div class="step-dot"></div>
+      </div>
+      
+      <div class="card">
+        <h3>Step 2: Host Scans This</h3>
+        <p style="color: #aaa; margin-bottom: 10px;">
+          Show this QR code to the host to complete connection.
+        </p>
+        
+        <div class="qr-wrapper">
+          <div class="qr-container">
+            <canvas id="client-qr-canvas"></canvas>
+          </div>
+        </div>
+        
+        <details class="manual-section">
+          <summary>Or copy code manually</summary>
+          <input type="text" class="code-input" id="answer-code" readonly onclick="this.select(); document.execCommand('copy');">
+        </details>
+        
+        <p style="color: #888; text-align: center; margin-top: 15px;">
+          Waiting for host to scan...
+        </p>
+      </div>
+    </div>
+
+    <!-- VIEW: Client - Connected -->
+    <div class="view" id="view-client-connected">
+      <div class="card">
+        <h3>🎉 Connected!</h3>
+        
+        <div class="stats">
+          <div class="stat">
+            <div class="stat-value" id="client-chars-recv">0</div>
+            <div class="stat-label">Characters Received</div>
+          </div>
+          <div class="stat">
+            <div class="stat-value" id="client-msgs-recv">0</div>
+            <div class="stat-label">Messages Received</div>
+          </div>
+        </div>
+        
+        <p style="color: #888; font-size: 0.85rem; margin-bottom: 5px;">Receiving:</p>
+        <div class="output-area streaming" id="client-output">Waiting for stream...</div>
+      </div>
+      
+      <button class="danger" onclick="disconnect()">
+        🔌 Disconnect
+      </button>
     </div>
   </div>
+
+  <script type="module">
+    import QRCode from 'https://esm.sh/qrcode@1.5.3';
+    import { createDirectConnection, DirectConnectionState } from './src/modules/webrtc-direct.js';
+
+    // App State
+    let role = null; // 'host' or 'client'
+    let connection = null;
+    let scannerStream = null;
+    let scannerInterval = null;
+    let jsQR = null;
+    
+    // Host state
+    let isStreaming = false;
+    let streamIndex = 0;
+    let hostCharsSent = 0;
+    let hostMsgsSent = 0;
+    
+    // Client state
+    let receivedText = '';
+    let clientCharsRecv = 0;
+    let clientMsgsRecv = 0;
+
+    // DOM Elements
+    const statusBar = document.getElementById('status-bar');
+    const statusDot = document.getElementById('status-dot');
+    const statusText = document.getElementById('status-text');
+
+    // Load jsQR dynamically
+    async function loadJsQR() {
+      if (!jsQR) {
+        const module = await import('https://esm.sh/jsqr@1.4.0');
+        jsQR = module.default;
+      }
+      return jsQR;
+    }
+
+    // View management
+    function showView(viewId) {
+      document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+      document.getElementById(viewId).classList.add('active');
+      
+      // Show status bar when not on home
+      if (viewId === 'view-home') {
+        statusBar.classList.add('hidden');
+      } else {
+        statusBar.classList.remove('hidden');
+      }
+    }
+
+    function updateStatus(state) {
+      statusDot.className = 'status-dot';
+      
+      switch (state) {
+        case DirectConnectionState.CONNECTED:
+          statusDot.classList.add('connected');
+          statusText.textContent = 'Connected';
+          break;
+        case DirectConnectionState.CONNECTING:
+        case DirectConnectionState.OFFERING:
+        case DirectConnectionState.ANSWERING:
+          statusDot.classList.add('connecting');
+          statusText.textContent = 'Connecting...';
+          break;
+        case DirectConnectionState.FAILED:
+          statusDot.classList.add('error');
+          statusText.textContent = 'Connection Failed';
+          break;
+        case DirectConnectionState.DISCONNECTED:
+          statusText.textContent = 'Disconnected';
+          break;
+        default:
+          statusText.textContent = 'Not Connected';
+      }
+    }
+
+    // Navigation
+    window.goHome = function() {
+      stopScanner();
+      if (connection) {
+        connection.close();
+        connection = null;
+      }
+      role = null;
+      showView('view-home');
+      updateStatus(DirectConnectionState.IDLE);
+    };
+
+    window.selectRole = function(selectedRole) {
+      role = selectedRole;
+      if (role === 'host') {
+        showView('view-host-create');
+      } else {
+        showView('view-client-scan');
+      }
+    };
+
+    // ==================== HOST FLOW ====================
+    
+    window.hostCreateSession = async function() {
+      const btn = document.getElementById('btn-create');
+      btn.disabled = true;
+      btn.textContent = 'Creating...';
+      
+      try {
+        connection = createDirectConnection({
+          onStateChange: (state) => {
+            updateStatus(state);
+            if (state === DirectConnectionState.CONNECTED) {
+              stopScanner();
+              showView('view-host-connected');
+            }
+          },
+          onMessage: (msg) => console.log('Host received:', msg),
+          onError: (err) => {
+            console.error('Connection error:', err);
+            alert('Connection error: ' + err.message);
+          }
+        });
+
+        const offer = await connection.createOffer();
+        
+        // Generate QR
+        const canvas = document.getElementById('qr-canvas');
+        await QRCode.toCanvas(canvas, offer, {
+          width: 220,
+          margin: 2,
+          errorCorrectionLevel: 'L'
+        });
+        
+        document.getElementById('offer-code').value = offer;
+        showView('view-host-show-qr');
+        
+      } catch (error) {
+        console.error('Failed to create session:', error);
+        alert('Failed to create session: ' + error.message);
+        btn.disabled = false;
+        btn.textContent = '📡 Create Session';
+      }
+    };
+
+    window.hostProceedToScan = async function() {
+      showView('view-host-scan');
+      await startScanner('host-scanner-video', async (code) => {
+        document.getElementById('answer-input').value = code;
+        await hostSubmitAnswer();
+      });
+    };
+
+    window.hostSubmitAnswer = async function() {
+      const answer = document.getElementById('answer-input').value.trim();
+      if (!answer) {
+        alert('Please scan or paste the client\'s code');
+        return;
+      }
+      
+      try {
+        stopScanner();
+        await connection.acceptAnswer(answer);
+      } catch (error) {
+        console.error('Failed to accept answer:', error);
+        alert('Failed to connect: ' + error.message);
+      }
+    };
+
+    window.startStreaming = function() {
+      const text = document.getElementById('stream-input').value;
+      if (!text) {
+        alert('Enter some text to stream');
+        return;
+      }
+      
+      isStreaming = true;
+      streamIndex = 0;
+      document.getElementById('btn-stream').disabled = true;
+      document.getElementById('host-output').textContent = '';
+      
+      streamNextChar();
+    };
+
+    function streamNextChar() {
+      if (!isStreaming) return;
+      
+      const text = document.getElementById('stream-input').value;
+      if (streamIndex < text.length) {
+        const char = text[streamIndex];
+        document.getElementById('host-output').textContent += char;
+        
+        try {
+          connection.send({ type: 'token', data: char });
+          hostCharsSent++;
+          document.getElementById('host-chars-sent').textContent = hostCharsSent;
+        } catch (e) {
+          console.error('Send error:', e);
+        }
+        
+        streamIndex++;
+        setTimeout(streamNextChar, 50);
+      } else {
+        isStreaming = false;
+        hostMsgsSent++;
+        document.getElementById('host-msgs-sent').textContent = hostMsgsSent;
+        document.getElementById('btn-stream').disabled = false;
+      }
+    }
+
+    window.sendAll = function() {
+      const text = document.getElementById('stream-input').value;
+      if (!text) return;
+      
+      try {
+        connection.send({ type: 'full', data: text });
+        document.getElementById('host-output').textContent = text;
+        hostCharsSent += text.length;
+        hostMsgsSent++;
+        document.getElementById('host-chars-sent').textContent = hostCharsSent;
+        document.getElementById('host-msgs-sent').textContent = hostMsgsSent;
+      } catch (e) {
+        console.error('Send error:', e);
+        alert('Send error: ' + e.message);
+      }
+    };
+
+    // ==================== CLIENT FLOW ====================
+    
+    window.clientStartScanner = async function() {
+      document.getElementById('btn-start-scan').classList.add('hidden');
+      document.getElementById('client-scanner-wrapper').classList.remove('hidden');
+      document.getElementById('client-scanner-hint').classList.remove('hidden');
+      
+      await startScanner('client-scanner-video', async (code) => {
+        document.getElementById('offer-input').value = code;
+        await clientSubmitOffer();
+      });
+    };
+
+    window.clientSubmitOffer = async function() {
+      const offer = document.getElementById('offer-input').value.trim();
+      if (!offer) {
+        alert('Please scan or paste the host\'s code');
+        return;
+      }
+      
+      try {
+        stopScanner();
+        
+        connection = createDirectConnection({
+          onStateChange: (state) => {
+            updateStatus(state);
+            if (state === DirectConnectionState.CONNECTED) {
+              showView('view-client-connected');
+            }
+          },
+          onMessage: (msg) => {
+            clientMsgsRecv++;
+            document.getElementById('client-msgs-recv').textContent = clientMsgsRecv;
+            
+            if (typeof msg === 'object') {
+              if (msg.type === 'token') {
+                receivedText += msg.data;
+              } else if (msg.type === 'full') {
+                receivedText = msg.data;
+              }
+            } else {
+              receivedText += msg;
+            }
+            
+            clientCharsRecv = receivedText.length;
+            document.getElementById('client-chars-recv').textContent = clientCharsRecv;
+            document.getElementById('client-output').textContent = receivedText;
+          },
+          onError: (err) => {
+            console.error('Connection error:', err);
+          }
+        });
+
+        const answer = await connection.createAnswer(offer);
+        
+        // Generate answer QR
+        const canvas = document.getElementById('client-qr-canvas');
+        await QRCode.toCanvas(canvas, answer, {
+          width: 220,
+          margin: 2,
+          errorCorrectionLevel: 'L'
+        });
+        
+        document.getElementById('answer-code').value = answer;
+        showView('view-client-show-qr');
+        
+      } catch (error) {
+        console.error('Failed to process offer:', error);
+        alert('Failed to process host code: ' + error.message);
+      }
+    };
+
+    // ==================== SCANNER ====================
+    
+    async function startScanner(videoElementId, onScan) {
+      try {
+        await loadJsQR();
+        
+        // Request camera with specific constraints for iOS
+        // Using getUserMedia will trigger the permission prompt
+        const constraints = {
+          video: {
+            facingMode: { ideal: 'environment' },
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+          },
+          audio: false
+        };
+        
+        console.log('Requesting camera access...');
+        scannerStream = await navigator.mediaDevices.getUserMedia(constraints);
+        console.log('Camera access granted');
+        
+        const video = document.getElementById(videoElementId);
+        video.srcObject = scannerStream;
+        
+        // For iOS: need to call play() after setting srcObject
+        try {
+          await video.play();
+        } catch (playError) {
+          console.log('Auto-play prevented, waiting for user interaction');
+        }
+        
+        // Wait for video to be ready
+        await new Promise((resolve) => {
+          if (video.readyState >= video.HAVE_ENOUGH_DATA) {
+            resolve();
+          } else {
+            video.onloadeddata = resolve;
+          }
+        });
+        
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        
+        const scan = () => {
+          if (!scannerStream) return;
+          
+          if (video.readyState === video.HAVE_ENOUGH_DATA) {
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const code = jsQR(imageData.data, canvas.width, canvas.height, {
+              inversionAttempts: 'dontInvert'
+            });
+            
+            if (code && code.data) {
+              console.log('Scanned:', code.data.substring(0, 50) + '...');
+              onScan(code.data);
+              return;
+            }
+          }
+          
+          scannerInterval = requestAnimationFrame(scan);
+        };
+        
+        scannerInterval = requestAnimationFrame(scan);
+        
+      } catch (error) {
+        console.error('Camera error:', error);
+        
+        // Reset UI state for client
+        const startScanBtn = document.getElementById('btn-start-scan');
+        const scannerWrapper = document.getElementById('client-scanner-wrapper');
+        const scannerHint = document.getElementById('client-scanner-hint');
+        
+        if (startScanBtn) startScanBtn.classList.remove('hidden');
+        if (scannerWrapper) scannerWrapper.classList.add('hidden');
+        if (scannerHint) scannerHint.classList.add('hidden');
+        
+        // Provide helpful error message
+        if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+          alert('Camera access was denied.\n\nTo use the camera:\n1. Tap the camera/settings icon in your browser\'s address bar\n2. Allow camera access\n3. Reload the page\n\nOr you can paste the code manually below.');
+        } else if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
+          alert('No camera found on this device.\n\nPlease use the manual code entry option below.');
+        } else if (error.name === 'NotReadableError' || error.name === 'TrackStartError') {
+          alert('Camera is in use by another app.\n\nPlease close other apps using the camera and try again.');
+        } else {
+          alert('Could not access camera: ' + error.message + '\n\nYou can paste the code manually instead.');
+        }
+      }
+    }
+
+    function stopScanner() {
+      if (scannerInterval) {
+        cancelAnimationFrame(scannerInterval);
+        scannerInterval = null;
+      }
+      
+      if (scannerStream) {
+        scannerStream.getTracks().forEach(track => track.stop());
+        scannerStream = null;
+      }
+    }
+
+    // ==================== DISCONNECT ====================
+    
+    window.disconnect = function() {
+      stopScanner();
+      
+      if (connection) {
+        connection.close();
+        connection = null;
+      }
+      
+      // Reset state
+      isStreaming = false;
+      streamIndex = 0;
+      hostCharsSent = 0;
+      hostMsgsSent = 0;
+      receivedText = '';
+      clientCharsRecv = 0;
+      clientMsgsRecv = 0;
+      
+      // Reset UI elements
+      document.getElementById('btn-create').disabled = false;
+      document.getElementById('btn-create').textContent = '📡 Create Session';
+      document.getElementById('btn-start-scan').classList.remove('hidden');
+      document.getElementById('client-scanner-wrapper').classList.add('hidden');
+      document.getElementById('client-scanner-hint').classList.add('hidden');
+      
+      goHome();
+    };
+
+    // Initialize
+    updateStatus(DirectConnectionState.IDLE);
+  </script>
 </body>
 </html>
