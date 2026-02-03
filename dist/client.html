@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>P2P LLM Stream - Client</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+    body {
+      margin: 0;
+      padding: 20px;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+      min-height: 100vh;
+      color: #fff;
+    }
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+    }
+    h1 {
+      text-align: center;
+      margin-bottom: 10px;
+    }
+    .subtitle {
+      text-align: center;
+      color: #888;
+      margin-bottom: 30px;
+    }
+    .card {
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 20px;
+      backdrop-filter: blur(10px);
+    }
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 15px;
+    }
+    .status-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: #f00;
+    }
+    .status-dot.connected {
+      background: #0f0;
+    }
+    .status-dot.connecting {
+      background: #ff0;
+      animation: pulse 1s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+    .join-form {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    input[type="text"] {
+      flex: 1;
+      min-width: 200px;
+      padding: 12px 15px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 8px;
+      background: rgba(0, 0, 0, 0.3);
+      color: #fff;
+      font-size: 14px;
+    }
+    input[type="text"]:focus {
+      outline: none;
+      border-color: #4CAF50;
+    }
+    button {
+      background: #4CAF50;
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 16px;
+      transition: background 0.3s;
+    }
+    button:hover {
+      background: #45a049;
+    }
+    button:disabled {
+      background: #666;
+      cursor: not-allowed;
+    }
+    button.secondary {
+      background: #2196F3;
+    }
+    button.secondary:hover {
+      background: #1976D2;
+    }
+    button.scan {
+      background: #9C27B0;
+    }
+    button.scan:hover {
+      background: #7B1FA2;
+    }
+    .output {
+      background: rgba(0, 0, 0, 0.4);
+      border-radius: 8px;
+      padding: 20px;
+      min-height: 300px;
+      white-space: pre-wrap;
+      font-family: 'Courier New', monospace;
+      line-height: 1.6;
+      font-size: 16px;
+    }
+    .output.streaming {
+      border: 2px solid #4CAF50;
+    }
+    .room-id {
+      font-family: monospace;
+      background: rgba(0,0,0,0.3);
+      padding: 8px 12px;
+      border-radius: 4px;
+      font-size: 12px;
+      word-break: break-all;
+    }
+    #scanner-container {
+      display: none;
+      text-align: center;
+    }
+    #scanner-video {
+      width: 100%;
+      max-width: 400px;
+      border-radius: 8px;
+      margin: 15px 0;
+    }
+    .cursor {
+      display: inline-block;
+      width: 8px;
+      height: 18px;
+      background: #4CAF50;
+      animation: blink 1s infinite;
+      vertical-align: middle;
+      margin-left: 2px;
+    }
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0; }
+    }
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 15px;
+      text-align: center;
+    }
+    .stat {
+      background: rgba(0, 0, 0, 0.2);
+      padding: 15px;
+      border-radius: 8px;
+    }
+    .stat-value {
+      font-size: 24px;
+      font-weight: bold;
+      color: #4CAF50;
+    }
+    .stat-label {
+      font-size: 12px;
+      color: #888;
+    }
+  </style>
+  <script type="module" crossorigin src="/assets/client-CHFXm26D.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/storage-D35zsQYn.js">
+</head>
+<body>
+  <div class="container">
+    <h1>📱 P2P LLM Stream - Client</h1>
+    <p class="subtitle">Join a session to receive real-time text streaming</p>
+
+    <div class="card">
+      <div class="status">
+        <div class="status-dot" id="status-dot"></div>
+        <span id="status-text">Disconnected</span>
+      </div>
+      
+      <h3 style="margin-top: 0;">Join Session</h3>
+      
+      <div class="join-form">
+        <input type="text" id="room-input" placeholder="Enter Room ID or paste QR data...">
+        <button onclick="joinSession()" id="join-btn">Join</button>
+        <button onclick="toggleScanner()" class="scan" id="scan-btn">📷 Scan QR</button>
+        <button onclick="leaveSession()" class="secondary" id="leave-btn" disabled>Leave</button>
+      </div>
+
+      <div id="scanner-container">
+        <video id="scanner-video" autoplay playsinline></video>
+        <p style="color: #888;">Point camera at QR code</p>
+        <button onclick="toggleScanner()" class="secondary">Cancel Scan</button>
+      </div>
+
+      <p class="room-id" id="room-id" style="margin-top: 15px; display: none;"></p>
+    </div>
+
+    <div class="card">
+      <h3 style="margin-top: 0;">📊 Reception Stats</h3>
+      <div class="stats">
+        <div class="stat">
+          <div class="stat-value" id="char-count">0</div>
+          <div class="stat-label">Characters Received</div>
+        </div>
+        <div class="stat">
+          <div class="stat-value" id="update-count">0</div>
+          <div class="stat-label">Updates Received</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3 style="margin-top: 0;">📥 Live Stream</h3>
+      <div class="output" id="output">
+        <span style="color: #888;">Waiting to connect to a session...</span>
+      </div>
+    </div>
+  </div>
+
+</body>
+</html>

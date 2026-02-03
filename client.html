@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>P2P LLM Stream - Client</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+    body {
+      margin: 0;
+      padding: 20px;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+      min-height: 100vh;
+      color: #fff;
+    }
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+    }
+    h1 {
+      text-align: center;
+      margin-bottom: 10px;
+    }
+    .subtitle {
+      text-align: center;
+      color: #888;
+      margin-bottom: 30px;
+    }
+    .card {
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 20px;
+      backdrop-filter: blur(10px);
+    }
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 15px;
+    }
+    .status-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: #f00;
+    }
+    .status-dot.connected {
+      background: #0f0;
+    }
+    .status-dot.connecting {
+      background: #ff0;
+      animation: pulse 1s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+    .join-form {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    input[type="text"] {
+      flex: 1;
+      min-width: 200px;
+      padding: 12px 15px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 8px;
+      background: rgba(0, 0, 0, 0.3);
+      color: #fff;
+      font-size: 14px;
+    }
+    input[type="text"]:focus {
+      outline: none;
+      border-color: #4CAF50;
+    }
+    button {
+      background: #4CAF50;
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 16px;
+      transition: background 0.3s;
+    }
+    button:hover {
+      background: #45a049;
+    }
+    button:disabled {
+      background: #666;
+      cursor: not-allowed;
+    }
+    button.secondary {
+      background: #2196F3;
+    }
+    button.secondary:hover {
+      background: #1976D2;
+    }
+    button.scan {
+      background: #9C27B0;
+    }
+    button.scan:hover {
+      background: #7B1FA2;
+    }
+    .output {
+      background: rgba(0, 0, 0, 0.4);
+      border-radius: 8px;
+      padding: 20px;
+      min-height: 300px;
+      white-space: pre-wrap;
+      font-family: 'Courier New', monospace;
+      line-height: 1.6;
+      font-size: 16px;
+    }
+    .output.streaming {
+      border: 2px solid #4CAF50;
+    }
+    .room-id {
+      font-family: monospace;
+      background: rgba(0,0,0,0.3);
+      padding: 8px 12px;
+      border-radius: 4px;
+      font-size: 12px;
+      word-break: break-all;
+    }
+    #scanner-container {
+      display: none;
+      text-align: center;
+    }
+    #scanner-video {
+      width: 100%;
+      max-width: 400px;
+      border-radius: 8px;
+      margin: 15px 0;
+    }
+    .cursor {
+      display: inline-block;
+      width: 8px;
+      height: 18px;
+      background: #4CAF50;
+      animation: blink 1s infinite;
+      vertical-align: middle;
+      margin-left: 2px;
+    }
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0; }
+    }
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 15px;
+      text-align: center;
+    }
+    .stat {
+      background: rgba(0, 0, 0, 0.2);
+      padding: 15px;
+      border-radius: 8px;
+    }
+    .stat-value {
+      font-size: 24px;
+      font-weight: bold;
+      color: #4CAF50;
+    }
+    .stat-label {
+      font-size: 12px;
+      color: #888;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>📱 P2P LLM Stream - Client</h1>
+    <p class="subtitle">Join a session to receive real-time text streaming</p>
+
+    <div class="card">
+      <div class="status">
+        <div class="status-dot" id="status-dot"></div>
+        <span id="status-text">Disconnected</span>
+      </div>
+      
+      <h3 style="margin-top: 0;">Join Session</h3>
+      
+      <div class="join-form">
+        <input type="text" id="room-input" placeholder="Enter Room ID or paste QR data...">
+        <button onclick="joinSession()" id="join-btn">Join</button>
+        <button onclick="toggleScanner()" class="scan" id="scan-btn">📷 Scan QR</button>
+        <button onclick="leaveSession()" class="secondary" id="leave-btn" disabled>Leave</button>
+      </div>
+
+      <div id="scanner-container">
+        <video id="scanner-video" autoplay playsinline></video>
+        <p style="color: #888;">Point camera at QR code</p>
+        <button onclick="toggleScanner()" class="secondary">Cancel Scan</button>
+      </div>
+
+      <p class="room-id" id="room-id" style="margin-top: 15px; display: none;"></p>
+    </div>
+
+    <div class="card">
+      <h3 style="margin-top: 0;">📊 Reception Stats</h3>
+      <div class="stats">
+        <div class="stat">
+          <div class="stat-value" id="char-count">0</div>
+          <div class="stat-label">Characters Received</div>
+        </div>
+        <div class="stat">
+          <div class="stat-value" id="update-count">0</div>
+          <div class="stat-label">Updates Received</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3 style="margin-top: 0;">📥 Live Stream</h3>
+      <div class="output" id="output">
+        <span style="color: #888;">Waiting to connect to a session...</span>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    // Import from our modules
+    import { 
+      createConnectionManager,
+      createSyncManager,
+      createQRManager,
+      createStorageAdapter,
+      createDocumentStorage,
+      validateRoomId,
+      ConnectionState,
+      decodeSessionData
+    } from './src/index.js';
+    
+    // Import Trystero (using MQTT strategy for reliable connections)
+    import { joinRoom } from 'https://esm.sh/trystero/mqtt';
+
+    // Initialize components
+    const storageAdapter = createStorageAdapter(localStorage);
+    const docStorage = createDocumentStorage(storageAdapter);
+    const qrManager = createQRManager();
+    
+    let connectionManager;
+    let syncManager;
+    let currentRoomId = null;
+    let updateCount = 0;
+    let scannerStream = null;
+    let isStreaming = false;
+
+    // DOM elements
+    const statusDot = document.getElementById('status-dot');
+    const statusText = document.getElementById('status-text');
+    const roomInput = document.getElementById('room-input');
+    const joinBtn = document.getElementById('join-btn');
+    const leaveBtn = document.getElementById('leave-btn');
+    const scanBtn = document.getElementById('scan-btn');
+    const roomIdEl = document.getElementById('room-id');
+    const output = document.getElementById('output');
+    const scannerContainer = document.getElementById('scanner-container');
+    const scannerVideo = document.getElementById('scanner-video');
+
+    // Update UI based on connection state
+    function updateConnectionUI(state) {
+      statusDot.className = 'status-dot';
+      
+      switch (state) {
+        case ConnectionState.CONNECTED:
+          statusDot.classList.add('connected');
+          statusText.textContent = 'Connected';
+          break;
+        case ConnectionState.CONNECTING:
+          statusDot.classList.add('connecting');
+          statusText.textContent = 'Connecting...';
+          break;
+        case ConnectionState.ERROR:
+          statusText.textContent = 'Error';
+          break;
+        default:
+          statusText.textContent = 'Disconnected';
+      }
+    }
+
+    // Parse input to extract room ID
+    function parseRoomInput(input) {
+      input = input.trim();
+      
+      // Check if it's a valid UUID
+      if (validateRoomId(input)) {
+        return input;
+      }
+      
+      // Try to decode as QR data (base64 JSON)
+      try {
+        const sessionData = decodeSessionData(input);
+        if (sessionData && sessionData.roomId) {
+          return sessionData.roomId;
+        }
+      } catch (e) {
+        // Not QR data
+      }
+      
+      // Try to parse from URL
+      try {
+        const sessionData = qrManager.parseFromUrl(input);
+        if (sessionData && sessionData.roomId) {
+          return sessionData.roomId;
+        }
+      } catch (e) {
+        // Not a URL
+      }
+      
+      return null;
+    }
+
+    // Join a session
+    window.joinSession = async function() {
+      const input = roomInput.value;
+      const roomId = parseRoomInput(input);
+      
+      if (!roomId) {
+        alert('Invalid Room ID or QR data. Please enter a valid Room ID.');
+        return;
+      }
+
+      try {
+        // Initialize managers
+        syncManager = createSyncManager({
+          onTextChange: (text) => {
+            output.innerHTML = text ? `${text}<span class="cursor"></span>` : '<span style="color: #888;">Waiting for stream...</span>';
+            document.getElementById('char-count').textContent = text.length;
+            if (text) {
+              output.classList.add('streaming');
+            }
+          },
+          onSync: () => {
+            updateCount++;
+            document.getElementById('update-count').textContent = updateCount;
+          }
+        });
+
+        connectionManager = createConnectionManager({
+          onPeerJoin: (peerId) => {
+            console.log('Host connected:', peerId);
+          },
+          onPeerLeave: (peerId) => {
+            console.log('Host disconnected:', peerId);
+          },
+          onStateChange: updateConnectionUI,
+          onData: (data, peerId) => {
+            console.log('Received data:', data);
+            updateCount++;
+            document.getElementById('update-count').textContent = updateCount;
+            
+            // Apply received state
+            if (data && typeof data === 'object') {
+              syncManager.merge(data);
+            }
+          }
+        });
+
+        currentRoomId = roomId;
+        await connectionManager.join(roomId, joinRoom);
+
+        // Update UI
+        roomIdEl.style.display = 'block';
+        roomIdEl.textContent = `Connected to: ${roomId}`;
+        joinBtn.disabled = true;
+        scanBtn.disabled = true;
+        leaveBtn.disabled = false;
+        roomInput.disabled = true;
+        output.innerHTML = '<span style="color: #888;">Connected! Waiting for stream...</span>';
+
+        // Load any saved state
+        const savedState = docStorage.loadDocument(roomId);
+        if (savedState) {
+          syncManager.merge(savedState);
+        }
+
+      } catch (error) {
+        console.error('Failed to join session:', error);
+        alert('Failed to join session: ' + error.message);
+      }
+    };
+
+    // Leave session
+    window.leaveSession = function() {
+      if (connectionManager) {
+        connectionManager.leave();
+      }
+      currentRoomId = null;
+      updateCount = 0;
+      
+      // Reset UI
+      roomIdEl.style.display = 'none';
+      joinBtn.disabled = false;
+      scanBtn.disabled = false;
+      leaveBtn.disabled = true;
+      roomInput.disabled = false;
+      roomInput.value = '';
+      output.innerHTML = '<span style="color: #888;">Waiting to connect to a session...</span>';
+      output.classList.remove('streaming');
+      document.getElementById('char-count').textContent = '0';
+      document.getElementById('update-count').textContent = '0';
+      updateConnectionUI(ConnectionState.DISCONNECTED);
+    };
+
+    // Toggle QR scanner
+    window.toggleScanner = async function() {
+      if (scannerStream) {
+        // Stop scanning
+        scannerStream.getTracks().forEach(track => track.stop());
+        scannerStream = null;
+        scannerContainer.style.display = 'none';
+        return;
+      }
+
+      try {
+        scannerContainer.style.display = 'block';
+        scannerStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'environment' }
+        });
+        scannerVideo.srcObject = scannerStream;
+
+        // Import jsQR for scanning
+        const jsQR = (await import('https://esm.sh/jsqr@1.4.0')).default;
+        
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+
+        // Scan loop
+        const scan = () => {
+          if (!scannerStream) return;
+
+          if (scannerVideo.readyState === scannerVideo.HAVE_ENOUGH_DATA) {
+            canvas.width = scannerVideo.videoWidth;
+            canvas.height = scannerVideo.videoHeight;
+            ctx.drawImage(scannerVideo, 0, 0, canvas.width, canvas.height);
+            
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const code = jsQR(imageData.data, canvas.width, canvas.height);
+            
+            if (code) {
+              console.log('Scanned:', code.data);
+              roomInput.value = code.data;
+              toggleScanner();
+              joinSession();
+              return;
+            }
+          }
+          requestAnimationFrame(scan);
+        };
+        
+        requestAnimationFrame(scan);
+
+      } catch (error) {
+        console.error('Camera error:', error);
+        alert('Could not access camera: ' + error.message);
+        scannerContainer.style.display = 'none';
+      }
+    };
+
+    // Check URL for session parameter on load
+    const urlParams = new URLSearchParams(window.location.search);
+    const sessionParam = urlParams.get('session');
+    if (sessionParam) {
+      roomInput.value = sessionParam;
+      // Auto-join after a brief delay
+      setTimeout(joinSession, 500);
+    }
+  </script>
+</body>
+</html>
