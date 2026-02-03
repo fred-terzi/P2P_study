@@ -191,7 +191,10 @@ export function createDirectConnection(options = {}) {
     pc.oniceconnectionstatechange = () => {
       console.log('ICE state:', pc.iceConnectionState);
       if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
-        setState(DirectConnectionState.CONNECTED);
+        // ICE is connected, but wait for data channel if it exists
+        if (dataChannel && dataChannel.readyState === 'open') {
+          setState(DirectConnectionState.CONNECTED);
+        }
       } else if (pc.iceConnectionState === 'failed') {
         setState(DirectConnectionState.FAILED);
         callbacks.onError(new Error('ICE connection failed'));
@@ -200,7 +203,21 @@ export function createDirectConnection(options = {}) {
       }
     };
     
+    pc.onconnectionstatechange = () => {
+      console.log('Connection state:', pc.connectionState);
+      if (pc.connectionState === 'connected') {
+        // Check if data channel is ready
+        if (dataChannel && dataChannel.readyState === 'open') {
+          setState(DirectConnectionState.CONNECTED);
+        }
+      } else if (pc.connectionState === 'failed') {
+        setState(DirectConnectionState.FAILED);
+        callbacks.onError(new Error('Connection failed'));
+      }
+    };
+    
     pc.ondatachannel = (event) => {
+      console.log('Received data channel:', event.channel.label);
       setupDataChannel(event.channel);
     };
     
@@ -210,8 +227,14 @@ export function createDirectConnection(options = {}) {
   function setupDataChannel(channel) {
     dataChannel = channel;
     
+    // Check if channel is already open (can happen in some browsers)
+    if (channel.readyState === 'open') {
+      console.log('Data channel already open');
+      setState(DirectConnectionState.CONNECTED);
+    }
+    
     dataChannel.onopen = () => {
-      console.log('Data channel open');
+      console.log('Data channel open event fired, readyState:', channel.readyState);
       setState(DirectConnectionState.CONNECTED);
     };
     
