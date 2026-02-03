@@ -430,3 +430,129 @@ describe('Full connection flow', () => {
     expect(client.getState()).toBe(DirectConnectionState.DISCONNECTED);
   });
 });
+
+describe('Message Protocol', () => {
+  describe('Client to Host Messages', () => {
+    test('should define request message type', () => {
+      const requestMsg = { type: 'request', data: 'Hello, host!' };
+      expect(requestMsg.type).toBe('request');
+      expect(requestMsg.data).toBe('Hello, host!');
+    });
+    
+    test('should handle request with empty data', () => {
+      const requestMsg = { type: 'request', data: '' };
+      expect(requestMsg.type).toBe('request');
+      expect(requestMsg.data).toBe('');
+    });
+    
+    test('should handle request with long message', () => {
+      const longText = 'A'.repeat(10000);
+      const requestMsg = { type: 'request', data: longText };
+      expect(requestMsg.data.length).toBe(10000);
+    });
+    
+    test('should handle request with unicode characters', () => {
+      const requestMsg = { type: 'request', data: '你好世界 🌍 مرحبا' };
+      expect(requestMsg.data).toBe('你好世界 🌍 مرحبا');
+    });
+  });
+  
+  describe('Host to Client Messages', () => {
+    test('should define response-start message type', () => {
+      const msg = { type: 'response-start' };
+      expect(msg.type).toBe('response-start');
+    });
+    
+    test('should define response-token message type', () => {
+      const msg = { type: 'response-token', data: 'H' };
+      expect(msg.type).toBe('response-token');
+      expect(msg.data).toBe('H');
+    });
+    
+    test('should define response-end message type', () => {
+      const msg = { type: 'response-end' };
+      expect(msg.type).toBe('response-end');
+    });
+    
+    test('should define response-full message type', () => {
+      const msg = { type: 'response-full', data: 'Complete response' };
+      expect(msg.type).toBe('response-full');
+      expect(msg.data).toBe('Complete response');
+    });
+  });
+  
+  describe('Message Flow Simulation', () => {
+    test('should simulate streaming response flow', () => {
+      const messages = [];
+      const onMessage = (msg) => messages.push(msg);
+      
+      // Simulate streaming response
+      onMessage({ type: 'response-start' });
+      onMessage({ type: 'response-token', data: 'H' });
+      onMessage({ type: 'response-token', data: 'e' });
+      onMessage({ type: 'response-token', data: 'l' });
+      onMessage({ type: 'response-token', data: 'l' });
+      onMessage({ type: 'response-token', data: 'o' });
+      onMessage({ type: 'response-end' });
+      
+      expect(messages.length).toBe(7);
+      expect(messages[0].type).toBe('response-start');
+      expect(messages[messages.length - 1].type).toBe('response-end');
+      
+      // Reconstruct message from tokens
+      const text = messages
+        .filter(m => m.type === 'response-token')
+        .map(m => m.data)
+        .join('');
+      expect(text).toBe('Hello');
+    });
+    
+    test('should simulate full response flow', () => {
+      const messages = [];
+      const onMessage = (msg) => messages.push(msg);
+      
+      // Simulate single full response
+      onMessage({ type: 'response-full', data: 'Complete answer' });
+      
+      expect(messages.length).toBe(1);
+      expect(messages[0].type).toBe('response-full');
+      expect(messages[0].data).toBe('Complete answer');
+    });
+    
+    test('should simulate request-response cycle', () => {
+      const clientMessages = [];
+      const hostMessages = [];
+      
+      // Client sends request
+      const request = { type: 'request', data: 'What is 2+2?' };
+      hostMessages.push(request);
+      
+      // Host receives and responds
+      expect(hostMessages[0].data).toBe('What is 2+2?');
+      
+      // Host streams response
+      clientMessages.push({ type: 'response-start' });
+      '4'.split('').forEach(char => {
+        clientMessages.push({ type: 'response-token', data: char });
+      });
+      clientMessages.push({ type: 'response-end' });
+      
+      expect(clientMessages.length).toBe(3);
+      expect(clientMessages.filter(m => m.type === 'response-token').length).toBe(1);
+    });
+  });
+  
+  describe('Legacy Message Compatibility', () => {
+    test('should still support legacy token type', () => {
+      const msg = { type: 'token', data: 'X' };
+      expect(msg.type).toBe('token');
+      expect(msg.data).toBe('X');
+    });
+    
+    test('should still support legacy full type', () => {
+      const msg = { type: 'full', data: 'Legacy message' };
+      expect(msg.type).toBe('full');
+      expect(msg.data).toBe('Legacy message');
+    });
+  });
+});

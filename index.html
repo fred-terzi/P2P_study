@@ -411,26 +411,34 @@
         
         <div class="stats">
           <div class="stat">
-            <div class="stat-value" id="host-chars-sent">0</div>
-            <div class="stat-label">Characters Sent</div>
+            <div class="stat-value" id="host-msgs-recv">0</div>
+            <div class="stat-label">Messages Received</div>
           </div>
           <div class="stat">
-            <div class="stat-value" id="host-msgs-sent">0</div>
-            <div class="stat-label">Messages Sent</div>
+            <div class="stat-value" id="host-chars-sent">0</div>
+            <div class="stat-label">Chars Streamed</div>
           </div>
         </div>
         
-        <textarea class="text-input" id="stream-input" placeholder="Type or paste text to stream..."></textarea>
+        <div class="mb-15">
+          <p style="color: #888; font-size: 0.85rem; margin-bottom: 5px;">Message from client:</p>
+          <div class="output-area" id="host-received" style="min-height: 60px;">Waiting for client message...</div>
+        </div>
         
-        <button onclick="startStreaming()" id="btn-stream">
-          ▶️ Stream Character by Character
-        </button>
-        <button onclick="sendAll()" class="secondary">
-          📤 Send All at Once
-        </button>
+        <div class="mb-15">
+          <p style="color: #888; font-size: 0.85rem; margin-bottom: 5px;">Type your response:</p>
+          <textarea class="text-input" id="stream-input" placeholder="Type or paste your response here..."></textarea>
+          
+          <button onclick="startStreaming()" id="btn-stream">
+            ▶️ Stream Response
+          </button>
+          <button onclick="sendAll()" class="secondary">
+            📤 Send All at Once
+          </button>
+        </div>
         
-        <div class="mt-10">
-          <p style="color: #888; font-size: 0.85rem; margin-bottom: 5px;">Sent:</p>
+        <div>
+          <p style="color: #888; font-size: 0.85rem; margin-bottom: 5px;">Sent to client:</p>
           <div class="output-area" id="host-output"></div>
         </div>
       </div>
@@ -512,17 +520,27 @@
         
         <div class="stats">
           <div class="stat">
-            <div class="stat-value" id="client-chars-recv">0</div>
-            <div class="stat-label">Characters Received</div>
+            <div class="stat-value" id="client-msgs-sent">0</div>
+            <div class="stat-label">Messages Sent</div>
           </div>
           <div class="stat">
-            <div class="stat-value" id="client-msgs-recv">0</div>
-            <div class="stat-label">Messages Received</div>
+            <div class="stat-value" id="client-chars-recv">0</div>
+            <div class="stat-label">Chars Received</div>
           </div>
         </div>
         
-        <p style="color: #888; font-size: 0.85rem; margin-bottom: 5px;">Receiving:</p>
-        <div class="output-area streaming" id="client-output">Waiting for stream...</div>
+        <div class="mb-15">
+          <p style="color: #888; font-size: 0.85rem; margin-bottom: 5px;">Send a message to host:</p>
+          <textarea class="text-input" id="client-message-input" placeholder="Type your message here..."></textarea>
+          <button onclick="clientSendMessage()" id="btn-client-send">
+            📤 Send Message
+          </button>
+        </div>
+        
+        <div>
+          <p style="color: #888; font-size: 0.85rem; margin-bottom: 5px;">Response from host:</p>
+          <div class="output-area streaming" id="client-output">Waiting for response...</div>
+        </div>
       </div>
       
       <button class="danger" onclick="disconnect()">
@@ -546,12 +564,12 @@
     let isStreaming = false;
     let streamIndex = 0;
     let hostCharsSent = 0;
-    let hostMsgsSent = 0;
+    let hostMsgsRecv = 0;
     
     // Client state
     let receivedText = '';
     let clientCharsRecv = 0;
-    let clientMsgsRecv = 0;
+    let clientMsgsSent = 0;
 
     // DOM Elements
     const statusBar = document.getElementById('status-bar');
@@ -643,7 +661,16 @@
               showView('view-host-connected');
             }
           },
-          onMessage: (msg) => console.log('Host received:', msg),
+          onMessage: (msg) => {
+            console.log('Host received:', msg);
+            // Handle incoming message from client
+            if (typeof msg === 'object' && msg.type === 'request') {
+              hostMsgsRecv++;
+              document.getElementById('host-msgs-recv').textContent = hostMsgsRecv;
+              document.getElementById('host-received').textContent = msg.data;
+              document.getElementById('host-received').classList.remove('streaming');
+            }
+          },
           onError: (err) => {
             console.error('Connection error:', err);
             alert('Connection error: ' + err.message);
@@ -706,6 +733,10 @@
       streamIndex = 0;
       document.getElementById('btn-stream').disabled = true;
       document.getElementById('host-output').textContent = '';
+      document.getElementById('host-output').classList.add('streaming');
+      
+      // Send stream start signal
+      connection.send({ type: 'response-start' });
       
       streamNextChar();
     };
@@ -719,7 +750,7 @@
         document.getElementById('host-output').textContent += char;
         
         try {
-          connection.send({ type: 'token', data: char });
+          connection.send({ type: 'response-token', data: char });
           hostCharsSent++;
           document.getElementById('host-chars-sent').textContent = hostCharsSent;
         } catch (e) {
@@ -730,8 +761,9 @@
         setTimeout(streamNextChar, 50);
       } else {
         isStreaming = false;
-        hostMsgsSent++;
-        document.getElementById('host-msgs-sent').textContent = hostMsgsSent;
+        document.getElementById('host-output').classList.remove('streaming');
+        // Send stream end signal
+        connection.send({ type: 'response-end' });
         document.getElementById('btn-stream').disabled = false;
       }
     }
@@ -741,12 +773,10 @@
       if (!text) return;
       
       try {
-        connection.send({ type: 'full', data: text });
+        connection.send({ type: 'response-full', data: text });
         document.getElementById('host-output').textContent = text;
         hostCharsSent += text.length;
-        hostMsgsSent++;
         document.getElementById('host-chars-sent').textContent = hostCharsSent;
-        document.getElementById('host-msgs-sent').textContent = hostMsgsSent;
       } catch (e) {
         console.error('Send error:', e);
         alert('Send error: ' + e.message);
@@ -784,22 +814,52 @@
             }
           },
           onMessage: (msg) => {
-            clientMsgsRecv++;
-            document.getElementById('client-msgs-recv').textContent = clientMsgsRecv;
+            console.log('Client received:', msg);
             
             if (typeof msg === 'object') {
-              if (msg.type === 'token') {
-                receivedText += msg.data;
-              } else if (msg.type === 'full') {
-                receivedText = msg.data;
+              switch (msg.type) {
+                case 'response-start':
+                  // Host started streaming response
+                  receivedText = '';
+                  document.getElementById('client-output').textContent = '';
+                  document.getElementById('client-output').classList.add('streaming');
+                  break;
+                case 'response-token':
+                  // Received a character of the streaming response
+                  receivedText += msg.data;
+                  clientCharsRecv = receivedText.length;
+                  document.getElementById('client-chars-recv').textContent = clientCharsRecv;
+                  document.getElementById('client-output').textContent = receivedText;
+                  break;
+                case 'response-end':
+                  // Host finished streaming
+                  document.getElementById('client-output').classList.remove('streaming');
+                  break;
+                case 'response-full':
+                  // Host sent complete response at once
+                  receivedText = msg.data;
+                  clientCharsRecv = receivedText.length;
+                  document.getElementById('client-chars-recv').textContent = clientCharsRecv;
+                  document.getElementById('client-output').textContent = receivedText;
+                  document.getElementById('client-output').classList.remove('streaming');
+                  break;
+                default:
+                  // Legacy support
+                  if (msg.type === 'token') {
+                    receivedText += msg.data;
+                  } else if (msg.type === 'full') {
+                    receivedText = msg.data;
+                  }
+                  clientCharsRecv = receivedText.length;
+                  document.getElementById('client-chars-recv').textContent = clientCharsRecv;
+                  document.getElementById('client-output').textContent = receivedText;
               }
             } else {
               receivedText += msg;
+              clientCharsRecv = receivedText.length;
+              document.getElementById('client-chars-recv').textContent = clientCharsRecv;
+              document.getElementById('client-output').textContent = receivedText;
             }
-            
-            clientCharsRecv = receivedText.length;
-            document.getElementById('client-chars-recv').textContent = clientCharsRecv;
-            document.getElementById('client-output').textContent = receivedText;
           },
           onError: (err) => {
             console.error('Connection error:', err);
@@ -822,6 +882,32 @@
       } catch (error) {
         console.error('Failed to process offer:', error);
         alert('Failed to process host code: ' + error.message);
+      }
+    };
+
+    // Client sends message to host
+    window.clientSendMessage = function() {
+      const input = document.getElementById('client-message-input');
+      const message = input.value.trim();
+      
+      if (!message) {
+        alert('Please enter a message to send');
+        return;
+      }
+      
+      try {
+        connection.send({ type: 'request', data: message });
+        clientMsgsSent++;
+        document.getElementById('client-msgs-sent').textContent = clientMsgsSent;
+        
+        // Clear input and prepare for response
+        input.value = '';
+        receivedText = '';
+        document.getElementById('client-output').textContent = 'Waiting for response...';
+        document.getElementById('client-output').classList.add('streaming');
+      } catch (e) {
+        console.error('Send error:', e);
+        alert('Failed to send message: ' + e.message);
       }
     };
 
@@ -944,10 +1030,10 @@
       isStreaming = false;
       streamIndex = 0;
       hostCharsSent = 0;
-      hostMsgsSent = 0;
+      hostMsgsRecv = 0;
       receivedText = '';
       clientCharsRecv = 0;
-      clientMsgsRecv = 0;
+      clientMsgsSent = 0;
       
       // Reset UI elements
       document.getElementById('btn-create').disabled = false;
